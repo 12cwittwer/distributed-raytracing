@@ -1,0 +1,3 @@
+/Users/christianwittwer/UtahTech/SeniorProject/distributed-raytracing/raytracer/build/CMakeFiles/image_renderer.dir
+/Users/christianwittwer/UtahTech/SeniorProject/distributed-raytracing/raytracer/build/CMakeFiles/edit_cache.dir
+/Users/christianwittwer/UtahTech/SeniorProject/distributed-raytracing/raytracer/build/CMakeFiles/rebuild_cache.dir
