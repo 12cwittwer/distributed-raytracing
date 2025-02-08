@@ -21,6 +21,10 @@ $(TARGET): $(SRCS)
 clean:
 	rm -f $(TARGET)
 
+image: 
+	cmake --build build
+	./build/image_renderer > image.ppm
+
 # Run the program
 run: $(TARGET)
 	./$(TARGET)
