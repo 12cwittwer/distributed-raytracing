@@ -1,9 +1,14 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 
+#include <mpi.h>
+#include <vector>
+#include <chrono>
 #include "hittable.h"
 #include "material.h"
 #include "PPM.h"
+
+const int TAG_REQUEST = 1, TAG_WORK = 2, TAG_RESULT = 3, TAG_STOP = 4;
 
 class camera {
   public:
@@ -25,24 +30,111 @@ class camera {
     
     void render(const hittable& world) {
         initialize();
-        
-        PPM image = PPM(image_height, image_width);
+    
+        int rank, num_procs;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+    
+        if (rank == 0) { // Master
+            // Begin Timer
+            auto start = std::chrono::high_resolution_clock::now();
 
-        for (int j = 0; j < image_height; j++) {
-            std::clog << "\rScanlines remaining: " << (image_height - j) << ' ' << std::flush;
-            for (int i = 0; i < image_width; i++) {
-                color pixel_color(0,0,0);
-                for (int sample = 0; sample < samples_per_pixel; sample++) {
-                    ray r = get_ray(i, j);
-                    pixel_color += ray_color(r, max_depth, world);
+            // Create image where results are stored
+            PPM image = PPM(image_height, image_width);
+
+            if (num_procs == 1) { // Single-threaded rendering
+                for (int j = 0; j < image_height; j++) {
+                    std::cout << "\rScanlines remaining: " << (image_height - j) << ' ' << std::endl;
+                    for (int i = 0; i < image_width; i++) {
+                        color pixel_color(0, 0, 0);
+                        for (int sample = 0; sample < samples_per_pixel; sample++) {
+                            ray r = get_ray(i, j);
+                            pixel_color += ray_color(r, max_depth, world);
+                        }
+                        image.setPixel(j, i, pixel_samples_scale * pixel_color);
+                    }
                 }
-                image.setPixel(j, i, pixel_samples_scale * pixel_color);
+    
+                image.writeImage();
+            } else {
+                int next_row = 0, active_workers = num_procs - 1;
+                MPI_Status status;
+        
+                // Assign initial work
+                for (int i = 1; i < num_procs; i++) {
+                    if (next_row < image_height) {
+                        MPI_Send(&next_row, 1, MPI_INT, i, TAG_WORK, MPI_COMM_WORLD);
+                        next_row++;
+                    }
+                }
+        
+                while (active_workers > 0) {
+                    std::vector<int> buffer(image_width * 3);
+                    int row_index;
+                    int worker_rank;
+        
+                    // Receive computed row
+                    MPI_Recv(buffer.data(), image_width * 3, MPI_INT, MPI_ANY_SOURCE, TAG_RESULT, MPI_COMM_WORLD, &status);
+                    worker_rank = status.MPI_SOURCE;
+                    MPI_Recv(&row_index, 1, MPI_INT, worker_rank, TAG_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        
+                    // ✅ Fix: Correctly map row_index back to image
+                    for (int i = 0; i < image_width; i++) {
+                        color pixel_color(buffer[i * 3], buffer[i * 3 + 1], buffer[i * 3 + 2]);
+                        image.setPixel(row_index, i, pixel_color); // ✅ Use row_index from worker
+                    }
+        
+                    // Assign new work if available
+                    if (next_row < image_height) {
+                        MPI_Send(&next_row, 1, MPI_INT, worker_rank, TAG_WORK, MPI_COMM_WORLD);
+                        next_row++;
+                        std::cout << "\rScanlines remaining: " << (image_height - next_row) << ' ' << std::endl;
+                    } else {
+                        MPI_Send(nullptr, 0, MPI_INT, worker_rank, TAG_STOP, MPI_COMM_WORLD);
+                        active_workers--;
+                    }
+                }
+            }
+
+            image.writeImage();
+
+            // Stop timer and print duration
+            auto end = std::chrono::high_resolution_clock::now();
+            // Calculate elapsed time in milliseconds
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+            std::cout << "Execution Time: " << duration.count() / 1000 << " s\n";
+
+            std::cout << "Rendering completed!\n";
+    
+        } else { // Workers
+            while (true) {
+                int row;
+                MPI_Status status;
+    
+                MPI_Recv(&row, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+                if (status.MPI_TAG == TAG_STOP) break;
+    
+                // ✅ Compute row colors correctly
+                std::vector<int> results(image_width * 3);
+                for (int i = 0; i < image_width; i++) {
+                    color pixel_color(0, 0, 0);
+                    for (int sample = 0; sample < samples_per_pixel; sample++) {
+                        ray r = get_ray(i, row);
+                        pixel_color += ray_color(r, max_depth, world);
+                    }
+                    color result = pixel_samples_scale * pixel_color;
+                    results[i * 3] = static_cast<int>(result.x());
+                    results[i * 3 + 1] = static_cast<int>(result.y());
+                    results[i * 3 + 2] = static_cast<int>(result.z());
+                }
+    
+                // Send row data
+                MPI_Send(results.data(), image_width * 3, MPI_INT, 0, TAG_RESULT, MPI_COMM_WORLD);
+                MPI_Send(&row, 1, MPI_INT, 0, TAG_RESULT, MPI_COMM_WORLD);
             }
         }
-
-        image.writeImage();
-
-        std::clog << "\rDone.                 \n";
+    
+        MPI_Finalize();
     }
 
   private:

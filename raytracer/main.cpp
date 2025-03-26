@@ -1,5 +1,6 @@
 #include "rtweekend.h"
 
+#include <iostream>
 #include "camera.h"
 #include "constant_medium.h"
 #include "hittable.h"
@@ -384,7 +385,8 @@ void final_scene(int image_width, int samples_per_pixel, int max_depth) {
     cam.render(world);
 }
 
-int main() {
+int main(int argc, char** argv) {
+    MPI_Init(&argc, &argv);
     switch (1) {
         case 1:  bouncing_spheres();          break;
         case 2:  checkered_spheres();         break;
@@ -397,4 +399,5 @@ int main() {
         case 9:  final_scene(800, 10000, 40); break;
         default: final_scene(400,   250,  4); break;
     }
+    return 0;
 }
