@@ -4,6 +4,60 @@
 #include "hittable.h"
 #include "rtweekend.h"
 
+struct hittable_sphere {
+  point3 center_start;
+  vec3 center_delta;
+  double radius;
+  int material_index;
+  aabb bbox;
+
+  __device__ __host__
+  point3 center(double time) const {
+    return center_start + time * center_delta;
+  }
+
+  __device__ __host__
+  bool hit (const ray& r, interval ray_t, hit_record& rec) const {
+    point3 current_center = center(r.time());
+    vec3 oc = r.origin() - current_center;
+    auto a = r.direction().length_squared();
+    auto h = dot(oc, r.direction());
+    auto c = oc.length_squared() - radius * radius;
+
+    auto discriminant = h * h - a * c;
+    if (discriminant < 0) return false;
+
+    auto sqrtd = sqrt(discriminant);
+
+    auto root = (-h - sqrtd) / a;
+    if (!ray_t.surrounds(root)) {
+      root = (-h + sqrtd) / a;
+      if (!ray_t.surrounds(root)) return false;
+    }
+
+    rec.t = root;
+    rec.p = r.at(rec.t);
+    vec3 outward_normal = (rec.p - current_center) / radius;
+    rec.set_face_normal(r, outward_normal);
+    get_sphere_uv(outward_normal, rec.u, rec.v);
+    rec.material_index = material_index;
+    return true;
+  }
+
+  __device__ __host__
+  aabb bounding_box() const {
+    return bbox;
+  }
+
+  __device__ __host__
+  static void get_sphere_uv(const point3& p, double& u, double& v) {
+    auto theta = acos(-p.y());
+    auto phi = atan2(-p.z(), p.x()) + pi;
+    u = phi / (2 * pi);
+    v = theta / pi;
+  }
+}
+
 class sphere : public hittable {
   public:
     // Stationary Sphere
