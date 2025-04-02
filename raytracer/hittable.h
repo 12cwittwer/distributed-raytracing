@@ -15,7 +15,8 @@ struct rotate_y;
 enum HittableType {
     HITTABLE_TRANSLATE,
     HITTABLE_ROTATE_Y,
-    HITTABLE_SPHERE
+    HITTABLE_SPHERE,
+    HITTABLE_CONSTANT_MEDIUM
 }
 
 struct hit_record {
@@ -39,6 +40,7 @@ struct hittable {
         hittable_translate* translate;
         hittable_rotate_y* rotate_y;
         hittable_sphere* sphere;
+        hittable_constant_medium* constant_medium;
     };
 
     __device__ __host__
@@ -49,7 +51,9 @@ struct hittable {
             case HITTABLE_ROTATE_Y:
                 return rotate_y->hit(r, ray_t, rec);
             case HITTABLE_SPHERE:
-            return sphere->hit(r, ray_t, rec);
+                return sphere->hit(r, ray_t, rec);
+            case HITTABLE_CONSTANT_MEDIUM:
+                return constant_medium->hit(r, ray_t, rec);
         }
         return false;
     }
@@ -63,6 +67,8 @@ struct hittable {
                 return rotate_y->bounding_box();
             case HITTABLE_SPHERE:
                 return sphere->bounding_box();
+            case HITTABLE_CONSTANT_MEDIUM:
+                return constant_medium->bounding_box();
         }
         return aabb(); // Default empty box
     }

@@ -5,6 +5,48 @@
 #include "material.h"
 #include "texture.h"
 
+struct hittable_constant_medium {
+  hittable* boundary;
+  double neg_inv_density;
+  material* phase_function;
+
+  __device__ __host__
+  bool hit(const ray& r, interval ray_t, hit_record& rec) const {
+    hit_record rec1, rec2;
+    if (!boundary->hit(r, interval::universe, rec1))
+      return false;
+    if (!boundary->hit(r, interval(rec1.t + 0.0001, infinity), rec2))
+      return false;
+
+      if (rec1.t < ray_t.min) rec1.t = ray_t.min;
+      if (rec2.t > ray_t.max) rec2.t = ray_t.max;
+
+      if (rec1.t < 0)
+        rec1.t = 0;
+
+      const auto ray_length = r.direction().length();
+      const auto distance_inside_boundary = (rec2.t - rec1.t) * ray_length;
+      const auto hit_distance = neg_inv_density * log(random_double);
+
+      if (hit_distance > distance_inside_boundary)
+        return false;
+
+      rec.t = rec1.t + hit_distance / ray_length;
+      rec.p = r.at(rec.t);
+      rec.normal = vec3(1, 0, 0);
+      rec.front_face = true;
+      rec.material_index = -1;
+      rec.material_index = phase_function_index; // ✅ index-based
+
+      return true
+  }
+
+  __device__ __host__
+  aabb bounding_box() const {
+    return boundary->bounding_box();
+  }
+}
+
 class constant_medium : public hittable {
   public:
     constant_medium(shared_ptr<hittable> boundary, double density, shared_ptr<texture> tex)
