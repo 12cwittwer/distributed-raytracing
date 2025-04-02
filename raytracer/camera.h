@@ -69,12 +69,12 @@ class camera {
                 }
         
                 while (active_workers > 0) {
-                    std::vector<float> buffer(image_width * 3);
+                    std::vector<int> buffer(image_width * 3);
                     int row_index;
                     int worker_rank;
         
                     // Receive computed row
-                    MPI_Recv(buffer.data(), image_width * 3, MPI_FLOAT, MPI_ANY_SOURCE, TAG_RESULT, MPI_COMM_WORLD, &status);
+                    MPI_Recv(buffer.data(), image_width * 3, MPI_INT, MPI_ANY_SOURCE, TAG_RESULT, MPI_COMM_WORLD, &status);
                     worker_rank = status.MPI_SOURCE;
                     MPI_Recv(&row_index, 1, MPI_INT, worker_rank, TAG_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         
@@ -115,7 +115,7 @@ class camera {
                 if (status.MPI_TAG == TAG_STOP) break;
     
                 // ✅ Compute row colors correctly
-                std::vector<float> results(image_width * 3);
+                std::vector<int> results(image_width * 3);
                 for (int i = 0; i < image_width; i++) {
                     color pixel_color(0, 0, 0);
                     for (int sample = 0; sample < samples_per_pixel; sample++) {
@@ -123,13 +123,13 @@ class camera {
                         pixel_color += ray_color(r, max_depth, world);
                     }
                     color result = pixel_samples_scale * pixel_color;
-                    results[i * 3] = result.x();
-                    results[i * 3 + 1] = result.y();
-                    results[i * 3 + 2] = result.z();
+                    results[i * 3] = static_cast<int>(result.x());
+                    results[i * 3 + 1] = static_cast<int>(result.y());
+                    results[i * 3 + 2] = static_cast<int>(result.z());
                 }
     
                 // Send row data
-                MPI_Send(results.data(), image_width * 3, MPI_FLOAT, 0, TAG_RESULT, MPI_COMM_WORLD);
+                MPI_Send(results.data(), image_width * 3, MPI_INT, 0, TAG_RESULT, MPI_COMM_WORLD);
                 MPI_Send(&row, 1, MPI_INT, 0, TAG_RESULT, MPI_COMM_WORLD);
             }
         }
