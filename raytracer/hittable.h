@@ -16,7 +16,8 @@ enum HittableType {
     HITTABLE_TRANSLATE,
     HITTABLE_ROTATE_Y,
     HITTABLE_SPHERE,
-    HITTABLE_CONSTANT_MEDIUM
+    HITTABLE_CONSTANT_MEDIUM,
+    HITTABLE_QUAD
 }
 
 struct hit_record {
@@ -41,6 +42,7 @@ struct hittable {
         hittable_rotate_y* rotate_y;
         hittable_sphere* sphere;
         hittable_constant_medium* constant_medium;
+        hittable_quad* quad;
     };
 
     __device__ __host__
@@ -54,6 +56,8 @@ struct hittable {
                 return sphere->hit(r, ray_t, rec);
             case HITTABLE_CONSTANT_MEDIUM:
                 return constant_medium->hit(r, ray_t, rec);
+            case HITTABLE_QUAD:
+                return quad->hit(r, ray_t, rec);
         }
         return false;
     }
@@ -69,6 +73,8 @@ struct hittable {
                 return sphere->bounding_box();
             case HITTABLE_CONSTANT_MEDIUM:
                 return constant_medium->bounding_box();
+            case HITTABLE_QUAD:
+                return quad->bounding_box();
         }
         return aabb(); // Default empty box
     }

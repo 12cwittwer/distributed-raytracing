@@ -236,4 +236,146 @@ class camera {
     }
 };
 
+struct camera {
+    double aspect_ratio;
+    int image_width;
+    int image_height;
+    int samples_per_pixel;
+    int max_depth;
+    color background;
+
+    double vfov;
+
+    point3 lookfrom;
+    point3 lookat;
+    vec3   vup;
+
+    double defocus_angle;
+    double focus_dist;
+
+    double pixel_samples_scale;
+    point3 center;
+    point3 pixel00_loc;
+    vec3 pixel_delta_u;
+    vec3 pixel_delta_v;
+    vec3 u, v, w;
+    vec3 defocus_disk_u;
+    vec3 defocus_disk_v;
+
+    __device__ __host__
+    void initialize() {
+        image_height = int(image_width / aspect_ratio);
+        if (image_height < 1) image_height = 1;
+
+        pixel_samples_scale = 1.0 / samples_per_pixel;
+
+        center = lookfrom;
+
+        auto theta = degrees_to_radians(vfov);
+        auto h = tan(theta / 2);
+        auto viewport_height = 2 * h * focus_dist;
+        auto viewport_width = viewport_height * (double(image_width) / image_height);
+
+        w = unit_vector(lookfrom - lookat);
+        u = unit_vector(cross(vup, w));
+        v = cross(w, u);
+
+        vec3 viewport_u = viewport_width * u;
+        vec3 viewport_v = viewport_height * -v;
+
+        pixel_delta_u = viewport_u / image_width;
+        pixel_delta_v = viewport_v / image_height;
+
+        auto viewport_upper_left = center - (focus_dist * w) - viewport_u / 2 - viewport_v / 2;
+        pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+
+        auto defocus_radius = focus_dist * tan(degrees_to_radians(defocus_angle / 2));
+        defocus_disk_u = u * defocus_radius;
+        defocus_disk_v = v * defocus_radius;
+    }
+
+    __device__ __host__
+    ray get_ray(int i, int j) const {
+        vec3 offset = sample_square();
+        point3 pixel_sample = pixel00_loc
+                            + ((i + offset.x()) * pixel_delta_u)
+                            + ((j + offset.y()) * pixel_delta_v);
+
+        point3 origin = (defocus_angle <= 0) ? center : defocus_disk_sample();
+        vec3 direction = pixel_sample - origin;
+        double time = random_double(); // TODO: Use per-thread random generator
+
+        return ray(origin, direction, time);
+    }
+
+    __device__ __host__
+    vec3 sample_square() const {
+        return vec3(random_double() - 0.5, random_double() - 0.5, 0);
+    }
+
+    __device__ __host__
+    point3 defocus_disk_sample() const {
+        vec3 p = random_in_unit_disk();
+        return center + p.x() * defocus_disk_u + p.y() * defocus_disk_v;
+    }
+};
+
+__device__ color ray_color(
+    const ray& r,
+    const hittable* world,
+    const material* materials,
+    int depth,
+    const color& background
+) {
+    if (depth <= 0)
+        return color(0, 0, 0);
+
+    hit_record rec;
+
+    if (!world->hit(r, interval(0.001, infinity), rec))
+        return background;
+
+    const material& mat = materials[rec.material_index];
+
+    color emitted = mat.emitted(rec.u, rec.v, rec.p);
+
+    ray scattered;
+    color attenuation;
+
+    if (!mat.scatter(r, rec, attenuation, scattered))
+        return emitted;
+
+    return emitted + attenuation * ray_color(scattered, world, materials, depth - 1, background);
+}
+
+__global__ void render_kernel(
+    color* framebuffer,
+    int image_width,
+    int image_height,
+    int samples_per_pixel,
+    int max_depth,
+    hittable* world,
+    material* materials,
+    camera* cam,
+    color background
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= image_width || j >= image_height) return;
+
+    int pixel_index = j * image_width + i;
+
+    color pixel_color(0, 0, 0);
+    for (int s = 0; s < samples_per_pixel; s++) {
+        ray r = cam->get_ray(i, j);
+        pixel_color += ray_color(r, world, materials, max_depth, background);
+    }
+
+    framebuffer[pixel_index] = pixel_color / double(samples_per_pixel);
+}
+
+
+
+
 #endif
