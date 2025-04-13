@@ -1,0 +1,3 @@
+rpi slots = 1
+borin
+aorin
