@@ -69,22 +69,29 @@ class camera {
                 }
         
                 while (active_workers > 0) {
-                    std::vector<int> buffer(image_width * 3);
+                    std::vector<unsigned char> buffer(image_width * 3);
                     int row_index;
                     int worker_rank;
-        
-                    // Receive computed row
-                    MPI_Recv(buffer.data(), image_width * 3, MPI_INT, MPI_ANY_SOURCE, TAG_RESULT, MPI_COMM_WORLD, &status);
+                    MPI_Status status;
+                
+                    // Receive row pixel data
+                    MPI_Recv(buffer.data(), image_width * 3, MPI_UNSIGNED_CHAR, MPI_ANY_SOURCE, TAG_RESULT, MPI_COMM_WORLD, &status);
                     worker_rank = status.MPI_SOURCE;
+                
+                    // Receive row index
                     MPI_Recv(&row_index, 1, MPI_INT, worker_rank, TAG_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        
-                    // ✅ Fix: Correctly map row_index back to image
+                
+                    // Store into image
                     for (int i = 0; i < image_width; i++) {
-                        color pixel_color(buffer[i * 3], buffer[i * 3 + 1], buffer[i * 3 + 2]);
-                        image.setPixel(row_index, i, pixel_color); // ✅ Use row_index from worker
+                        color pixel_color(
+                            buffer[i * 3] / 255.0f,
+                            buffer[i * 3 + 1] / 255.0f,
+                            buffer[i * 3 + 2] / 255.0f
+                        );
+                        image.setPixel(row_index, i, pixel_color);
                     }
-        
-                    // Assign new work if available
+                
+                    // Assign next row or stop worker
                     if (next_row < image_height) {
                         MPI_Send(&next_row, 1, MPI_INT, worker_rank, TAG_WORK, MPI_COMM_WORLD);
                         next_row++;
@@ -94,6 +101,7 @@ class camera {
                         active_workers--;
                     }
                 }
+                
             }
 
             image.writeImage();
@@ -110,12 +118,17 @@ class camera {
             while (true) {
                 int row;
                 MPI_Status status;
-    
+        
                 MPI_Recv(&row, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-                if (status.MPI_TAG == TAG_STOP) break;
-    
-                // ✅ Compute row colors correctly
-                std::vector<int> results(image_width * 3);
+                if (status.MPI_TAG == TAG_STOP)
+                    break;
+        
+                std::vector<unsigned char> results(image_width * 3);
+        
+                auto to_byte = [](float x) -> unsigned char {
+                    return static_cast<unsigned char>(256 * std::clamp(x, 0.0f, 0.999f));
+                };
+        
                 for (int i = 0; i < image_width; i++) {
                     color pixel_color(0, 0, 0);
                     for (int sample = 0; sample < samples_per_pixel; sample++) {
@@ -123,16 +136,16 @@ class camera {
                         pixel_color += ray_color(r, max_depth, world);
                     }
                     color result = pixel_samples_scale * pixel_color;
-                    results[i * 3] = static_cast<int>(result.x());
-                    results[i * 3 + 1] = static_cast<int>(result.y());
-                    results[i * 3 + 2] = static_cast<int>(result.z());
+        
+                    results[i * 3]     = to_byte(result.x());
+                    results[i * 3 + 1] = to_byte(result.y());
+                    results[i * 3 + 2] = to_byte(result.z());
                 }
-    
-                // Send row data
-                MPI_Send(results.data(), image_width * 3, MPI_INT, 0, TAG_RESULT, MPI_COMM_WORLD);
+        
+                MPI_Send(results.data(), image_width * 3, MPI_UNSIGNED_CHAR, 0, TAG_RESULT, MPI_COMM_WORLD);
                 MPI_Send(&row, 1, MPI_INT, 0, TAG_RESULT, MPI_COMM_WORLD);
             }
-        }
+        }        
     
         MPI_Finalize();
     }
