@@ -384,10 +384,46 @@ void final_scene(int image_width, int samples_per_pixel, int max_depth) {
 
     cam.render(world);
 }
+void presentation() {
+    hittable_list world;
+
+    // Materials
+    auto glass_front  = make_shared<dielectric>(1.5);
+    auto glass_left   = make_shared<dielectric>(1.3);
+    auto metal_back   = make_shared<metal>(color(0.8, 0.3, 0.3), 0.05);
+    auto metal_right  = make_shared<metal>(color(0.7, 0.1, 0.7), 0.05);
+    auto lamb_top     = make_shared<lambertian>(color(0.1, 0.1, 0.8));
+    auto lamb_floor   = make_shared<lambertian>(color(0.0, 0.6, 0.0));
+
+    world.add(make_shared<sphere>(point3(-1.0, 0, -9), 0.5, glass_front));
+    world.add(make_shared<sphere>(point3(0, 0, -8), 0.2, glass_left));
+    world.add(make_shared<sphere>(point3(0, 0, -10), 0.5, metal_back));
+    world.add(make_shared<sphere>(point3(1, 0, -9), 0.5, metal_right));
+    world.add(make_shared<sphere>(point3(0, 1, -9), 0.5, lamb_top));
+    world.add(make_shared<sphere>(point3(0, -900, -15), 899.5, lamb_floor));
+
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 800;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 10;
+
+    cam.background        = color(1, 1, 1);
+
+    cam.vfov     = 20;
+    cam.lookfrom = point3(0,0,0);
+    cam.lookat   = point3(0,0,-1);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 0;
+
+    cam.render(world);
+}
 
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
-    switch (1) {
+    switch (10) {
         case 1:  bouncing_spheres();          break;
         case 2:  checkered_spheres();         break;
         case 3:  earth();                     break;
@@ -397,6 +433,7 @@ int main(int argc, char** argv) {
         case 7:  cornell_box();               break;
         case 8:  cornell_smoke();             break;
         case 9:  final_scene(800, 10000, 40); break;
+        case 10: presentation();              break;
         default: final_scene(400,   250,  4); break;
     }
     return 0;
